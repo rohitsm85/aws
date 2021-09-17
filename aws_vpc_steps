@@ -1,0 +1,79 @@
+VPC steps:
+
+1. create vpc - myvpc - 10.0.0.0/16
+
+2. create 2 subnets,  public (webSN) 10.0.1.0/24 and private (DBSN) 10.0.2.0/24
+
+2a. autoassign IPV4 to webSN
+
+3. create internet gateway myIGW and attach VPC myvpc
+
+4. create Route table, myRT
+
+5. RT has 2 ends, attach 1 end to webSN public subnet and other to internet gateway myIGW
+
+6. create web server in public subnet (webSN)
+
+webserver boot strap script:
+----------------------------
+#!/bin/bash
+sudo su
+yum update -y
+yum install httpd -y
+cd /var/www/html
+echo "MyGOOGLE--1" > index.html
+service httpd start
+chkconfig httpd on
+
+security group:
+HTTP  src - 0.0.0.0/0
+SSH   src - 0.0.0.0/0
+
+7. create a db server in private subnet (dbSN)
+
+security group:
+MYSQL/Aurora  src: 10.0.1.0/24 (public/web subnet)
+SSH           src: 10.0.1.41/32 (Bastion server private IP)
+
+8. check if the web server has got the public ip and you can access the webpage from the local browser
+
+9. db server shouldnt have received the public ip as it is in private subnet
+
+10. Now in order to connect to DB server for server maintainance, we need to connect to it via a bastion server (jump server)
+
+11. create a baston server in the public subnet (web SN)
+
+security group:
+SSH   src: <my_local_system_ip>
+
+12. ssh to from the local system to the bastion server (10.0.1.x ip range)
+
+13. from the bastion try to access to the db server,
+this step fails as the pem file is not present in the bastion server
+
+14. scp the pem file to the bastion server
+linux machine:
+sudo scp -i bastionKP04.pem ./dbKP04.pem ec2-user@13.236.188.53:/home/ec2-user
+win machine:
+use win scp and send the file using the public ip of bastion server
+
+15. ssh to the db server as we have the pem file and this tep should pass
+
+16. as we are in the db server, try to install mysql db
+yum install mysql -y
+this step should fail as there is not internet connection to the db server
+
+17. we use NAT gateway to provide internet to the db server
+    create Nat gateway in the public subnet (web SN) and allocate elastic ip address
+   
+18. attach a route table to this, one end should be connected to the db server and the other end to the nat gateway
+
+19. now try to install mysql in the db server, this step should work
+
+20. to provide additional security to the web subnet we use a Network ACL,
+    by default the NACL is deny all traffic and it is stateful,
+    so we need to do 2 things,
+    a. add additional rules as defined in the security group of the web server
+    b. add these rules in both inbound and out bound
+   
+21. there are ephimeral ports, which needs to be open. add another rule to open ephimeral ports in the NACL (both inbound and outbound)
